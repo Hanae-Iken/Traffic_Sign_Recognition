@@ -1,0 +1,30 @@
+# Ignorer l'environnement virtuel
+env/
+.venv/
+
+# Ignorer les fichiers du modèle (fichiers lourds, à ne pas pousser sur GitHub)
+models/
+*.h5
+
+# Ignorer les fichiers de données et de cache
+data/
+*.csv
+*.xlsx
+
+# Ignorer les fichiers de logs
+*.log
+
+# Ignorer les fichiers temporaires de l'éditeur
+.vscode/
+.idea/
+
+# Ignorer les fichiers Python compilés
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignorer les fichiers de tests non nécessaires
+test/
+
+# Ignorer les fichiers de configuration spécifiques à l'OS
+Thumbs.db  # Windows
