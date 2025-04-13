@@ -1,53 +1,68 @@
 import cv2
 import numpy as np
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
+import os
 
-# Prétraiter une image (redimensionnement, normalisation, conversion)
-def preprocess_image(image_path):
-    # Charger l'image avec OpenCV
-    image = cv2.imread(image_path)
-    
+def load_image(image_path):
+    """
+    Charge une image à partir du chemin spécifié
+    """
+    return cv2.imread(image_path)
+
+def resize_image(image, target_size=(64, 64)):
+    """
+    Redimensionne l'image à la taille spécifiée
+    """
+    return cv2.resize(image, target_size)
+
+def normalize_image(image):
+    """
+    Normalise les valeurs des pixels entre 0 et 1
+    """
+    return image / 255.0
+
+def preprocess_image(image_path, target_size=(64, 64)):
+    """
+    Prétraite une image en la chargeant, la redimensionnant et la normalisant
+    """
+    image = load_image(image_path)
     if image is None:
-        raise ValueError(f"Impossible de charger l'image à l'emplacement: {image_path}")
+        print(f"Impossible de charger l'image: {image_path}")
+        return None
     
-    # Redimensionner l'image à la taille requise pour ResNet50 (224x224)
-    image_resized = cv2.resize(image, (224, 224))
+    # Conversion de BGR à RGB (OpenCV charge en BGR par défaut)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    
+    # Redimensionnement
+    image = resize_image(image, target_size)
+    
+    # Normalisation
+    image = normalize_image(image)
+    
+    return image
 
-    # Convertir l'image de BGR à RGB
-    image_rgb = cv2.cvtColor(image_resized, cv2.COLOR_BGR2RGB)
+def apply_clahe(image):
+    """
+    Applique CLAHE (Contrast Limited Adaptive Histogram Equalization) à l'image
+    """
+    lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
+    lab_planes = cv2.split(lab)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    lab_planes[0] = clahe.apply(lab_planes[0])
+    lab = cv2.merge(lab_planes)
+    return cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
 
-    # Normaliser l'image
-    image_rgb = image_rgb / 255.0
-
-    return image_rgb
-
-# Charger les données avec augmentation (train) et normalisation (validation)
-def load_data():
-    # Créer un générateur d'images pour l'entraînement avec augmentation
-    train_datagen = ImageDataGenerator(rescale=1./255,
-                                       rotation_range=40,
-                                       width_shift_range=0.2,
-                                       height_shift_range=0.2,
-                                       shear_range=0.2,
-                                       zoom_range=0.2,
-                                       horizontal_flip=True,
-                                       fill_mode='nearest')
-
-    # Créer un générateur d'images pour la validation (juste la normalisation)
-    validation_datagen = ImageDataGenerator(rescale=1./255)
-
-    # Charger les données d'entraînement
-    train_generator = train_datagen.flow_from_directory(
-        'data/Train/',  # Dossier contenant les sous-dossiers de classes pour l'entraînement
-        target_size=(224, 224),
-        batch_size=32,
-        class_mode='categorical')  # Utilise 'categorical' pour la classification multi-classes
-
-    # Charger les données de validation
-    validation_generator = validation_datagen.flow_from_directory(
-        'data/Train/Validation/',  # Le sous-dossier de validation que tu as créé
-        target_size=(224, 224),
-        batch_size=32,
-        class_mode='categorical')
-
-    return train_generator, validation_generator
+def preprocess_for_detection(image, target_size=(64, 64)):
+    """
+    Prétraitement spécifique pour la détection en temps réel
+    """
+    # Conversion BGR à RGB si l'image est en BGR
+    if len(image.shape) == 3 and image.shape[2] == 3:
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    
+    # Redimensionnement
+    image = resize_image(image, target_size)
+    
+    # Normalisation
+    image = normalize_image(image)
+    
+    return image

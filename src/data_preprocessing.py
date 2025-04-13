@@ -1,35 +1,86 @@
-import os
 import pandas as pd
-from sklearn.model_selection import train_test_split
-import shutil
+import numpy as np
+import os
+from src.preprocess import preprocess_image
+from sklearn.preprocessing import LabelEncoder
+from tensorflow.keras.utils import to_categorical
 
-# Charger le fichier CSV contenant les informations des images
-def load_csv_data(csv_file):
-    df = pd.read_csv(csv_file)
-
-    # Nettoyer les chemins s’ils contiennent déjà un préfixe 'Train/'
-    df['Path'] = df['Path'].str.replace('Train/', '', regex=False)
-
-    return df
-
-# Diviser les données en train et validation (80% pour l'entraînement, 20% pour la validation)
-def split_data(df, test_size=0.2):
-    train_df, val_df = train_test_split(df, test_size=test_size, random_state=42)
-    return train_df, val_df
-
-# Déplacer les images dans les sous-dossiers de validation
-def move_images_to_validation(train_df, val_df, source_dir='data/Train', val_dir='data/Train/Validation'):
-    os.makedirs(val_dir, exist_ok=True)
-
-    for _, row in val_df.iterrows():
-        image_path = os.path.join(source_dir, row['Path'])  # row['Path'] est maintenant nettoyé
-        class_name = row['ClassId']
-
-        if os.path.exists(image_path):
-            class_dir = os.path.join(val_dir, str(class_name))
-            os.makedirs(class_dir, exist_ok=True)
-
-            dest_path = os.path.join(class_dir, os.path.basename(row['Path']))
-            shutil.move(image_path, dest_path)
+def load_data_from_csv(csv_path, images_dir, target_size=(64, 64)):
+    """
+    Charge les données à partir d'un fichier CSV et du répertoire d'images correspondant
+    """
+    data = pd.read_csv(csv_path)
+    
+    # Initialisation des tableaux pour les images et les étiquettes
+    X = []
+    y = []
+    
+    # Parcourir chaque ligne du CSV
+    for index, row in data.iterrows():
+        # Construire le chemin d'accès à l'image
+        if 'Path' in data.columns:
+            image_path = os.path.join(images_dir, row['Path'])
         else:
-            print(f"Image non trouvée : {image_path}")
+            # Ajustez selon la structure de votre CSV
+            image_path = os.path.join(images_dir, str(row['ClassId']), str(row['Filename']))
+        
+        # Prétraitement de l'image
+        processed_image = preprocess_image(image_path, target_size)
+        
+        if processed_image is not None:
+            X.append(processed_image)
+            y.append(row['ClassId'])
+    
+    # Conversion en tableaux numpy
+    X = np.array(X)
+    y = np.array(y)
+    
+    return X, y
+
+def encode_labels(y_train, y_val=None, y_test=None):
+    """
+    Encode les étiquettes catégorielles en one-hot encoding
+    """
+    # Encoder les étiquettes (ClassId) en entiers consécutifs si nécessaire
+    label_encoder = LabelEncoder()
+    y_train_encoded = label_encoder.fit_transform(y_train)
+    
+    # Conversion en one-hot encoding
+    num_classes = len(label_encoder.classes_)
+    y_train_categorical = to_categorical(y_train_encoded, num_classes)
+    
+    if y_val is not None and y_test is not None:
+        y_val_encoded = label_encoder.transform(y_val)
+        y_test_encoded = label_encoder.transform(y_test)
+        y_val_categorical = to_categorical(y_val_encoded, num_classes)
+        y_test_categorical = to_categorical(y_test_encoded, num_classes)
+        return y_train_categorical, y_val_categorical, y_test_categorical, label_encoder, num_classes
+    
+    return y_train_categorical, label_encoder, num_classes
+
+def load_and_prepare_data(train_csv, train_dir, val_csv=None, val_dir=None, test_csv=None, test_dir=None, target_size=(64, 64)):
+    """
+    Charge et prépare l'ensemble du jeu de données (train, validation, test)
+    """
+    # Chargement des données d'entraînement
+    X_train, y_train = load_data_from_csv(train_csv, train_dir, target_size)
+    
+    if val_csv and val_dir:
+        # Chargement des données de validation
+        X_val, y_val = load_data_from_csv(val_csv, val_dir, target_size)
+    else:
+        X_val, y_val = None, None
+    
+    if test_csv and test_dir:
+        # Chargement des données de test
+        X_test, y_test = load_data_from_csv(test_csv, test_dir, target_size)
+    else:
+        X_test, y_test = None, None
+    
+    # Encodage des étiquettes
+    if X_val is not None and X_test is not None:
+        y_train_cat, y_val_cat, y_test_cat, label_encoder, num_classes = encode_labels(y_train, y_val, y_test)
+        return X_train, y_train_cat, X_val, y_val_cat, X_test, y_test_cat, label_encoder, num_classes
+    
+    y_train_cat, label_encoder, num_classes = encode_labels(y_train)
+    return X_train, y_train_cat, label_encoder, num_classes

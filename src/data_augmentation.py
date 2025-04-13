@@ -1,17 +1,56 @@
-import cv2
+import tensorflow as tf
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
 import numpy as np
+import matplotlib.pyplot as plt
 
-def augment_data(image):
-    # Rotation aléatoire de l'image
-    rows, cols, _ = image.shape
-    M = cv2.getRotationMatrix2D((cols/2, rows/2), 15, 1)  # Rotation de 15 degrés
-    rotated_image = cv2.warpAffine(image, M, (cols, rows))
+def create_image_data_generator():
+    """
+    Crée un générateur de données augmentées pour l'entraînement
+    """
+    return ImageDataGenerator(
+        rotation_range=10,
+        width_shift_range=0.1,
+        height_shift_range=0.1,
+        shear_range=0.1,
+        zoom_range=0.1,
+        horizontal_flip=False,  # Pas de flip horizontal pour les panneaux de signalisation
+        fill_mode='nearest',
+        brightness_range=[0.8, 1.2]
+    )
 
-    # Translation aléatoire
-    M_translation = np.float32([[1, 0, 50], [0, 1, 50]])  # Décalage de 50 pixels
-    translated_image = cv2.warpAffine(rotated_image, M_translation, (cols, rows))
+def visualize_augmentations(image, datagen, num_samples=5):
+    """
+    Visualise les augmentations de données sur une image
+    """
+    # Expand dimensions for batch processing
+    image_expanded = np.expand_dims(image, 0)
+    
+    # Initialize the iterator
+    aug_iter = datagen.flow(image_expanded, batch_size=1)
+    
+    # Plot original and augmented images
+    plt.figure(figsize=(12, 3))
+    plt.subplot(1, num_samples+1, 1)
+    plt.imshow(image)
+    plt.title('Original')
+    plt.axis('off')
+    
+    for i in range(num_samples):
+        aug_image = next(aug_iter)[0].astype('float32')
+        plt.subplot(1, num_samples+1, i+2)
+        plt.imshow(aug_image)
+        plt.title(f'Augmented {i+1}')
+        plt.axis('off')
+    
+    plt.tight_layout()
+    plt.show()
 
-    # Zoom
-    zoomed_image = cv2.resize(translated_image, None, fx=1.1, fy=1.1)  # Zoom avant de 10%
-
-    return zoomed_image
+def apply_augmentation(X_train, y_train, batch_size=32):
+    """
+    Applique l'augmentation de données aux données d'entraînement
+    """
+    datagen = create_image_data_generator()
+    datagen.fit(X_train)
+    
+    # Retourne un générateur pour être utilisé dans model.fit
+    return datagen.flow(X_train, y_train, batch_size=batch_size)
