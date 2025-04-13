@@ -2,56 +2,59 @@ import cv2
 import numpy as np
 import pickle
 from keras.models import load_model
+from keras.preprocessing.image import img_to_array
 
 # Paramètres
-frame_width = 640
-frame_height = 480
-brightness = 180
-threshold = 0.75
-font = cv2.FONT_HERSHEY_SIMPLEX
+FRAME_WIDTH = 640
+FRAME_HEIGHT = 480
+CONFIDENCE_THRESHOLD = 0.8  # Seuil augmenté pour plus de fiabilité
+FONT = cv2.FONT_HERSHEY_SIMPLEX
+TEXT_COLOR = (0, 255, 0)  # Vert pour meilleure visibilité
+TEXT_THICKNESS = 2
 
-# Charger le modèle
-model = load_model("models/traffic_sign_model.h5")
+def load_model_and_labels():
+    """Charge le modèle et les labels"""
+    model = load_model("models/traffic_sign_model.keras")
+    with open("models/labels.pkl", "rb") as f:
+        labels = pickle.load(f)
+    return model, labels
 
-# Fonction pour prétraiter l'image
-def preprocess(img):
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    img = cv2.equalizeHist(img)
-    img = img / 255.0
-    return img
+def preprocess_image(image):
+    """Prétraitement optimisé de l'image"""
+    image = cv2.resize(image, (32, 32))
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    image = cv2.equalizeHist(image)
+    image = image.astype("float") / 255.0
+    image = img_to_array(image)
+    image = np.expand_dims(image, axis=0)
+    return image
 
-# Dictionnaire des classes (adapté à votre CSV)
-class_names = {
-    0: 'Limitation de vitesse (20km/h)',
-    1: 'Limitation de vitesse (30km/h)',
-    # ... (ajoutez toutes les classes comme dans votre CSV)
-}
+def main():
+    model, class_names = load_model_and_labels()
+    
+    cap = cv2.VideoCapture(0)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
+    
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        
+        processed = preprocess_image(frame)
+        preds = model.predict(processed, verbose=0)[0]
+        (label, prob) = (np.argmax(preds), np.max(preds))
+        
+        if prob > CONFIDENCE_THRESHOLD:
+            text = f"{class_names[label]} ({prob*100:.1f}%)"
+            cv2.putText(frame, text, (20, 40), FONT, 0.8, TEXT_COLOR, TEXT_THICKNESS)
+        
+        cv2.imshow("Traffic Sign Detection", frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+    
+    cap.release()
+    cv2.destroyAllWindows()
 
-# Capture vidéo
-cap = cv2.VideoCapture(0)
-cap.set(3, frame_width)
-cap.set(4, frame_height)
-cap.set(10, brightness)
-
-while True:
-    success, img_original = cap.read()
-    img = np.asarray(img_original)
-    img = cv2.resize(img, (32, 32))
-    img = preprocess(img)
-    img = img.reshape(1, 32, 32, 1)
-
-    # Prédiction
-    predictions = model.predict(img)
-    class_id = np.argmax(predictions)
-    probability = np.amax(predictions)
-
-    if probability > threshold:
-        cv2.putText(img_original, f"CLASS: {class_id} {class_names.get(class_id, 'Unknown')}", (20, 35), font, 0.75, (0, 0, 255), 2)
-        cv2.putText(img_original, f"PROBABILITY: {probability * 100:.2f}%", (20, 75), font, 0.75, (0, 0, 255), 2)
-
-    cv2.imshow("Result", img_original)
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
-
-cap.release()
-cv2.destroyAllWindows()
+if __name__ == "__main__":
+    main()
