@@ -1,0 +1,16 @@
+# Ignore model and data files
+*.h5
+*.csv
+
+# Ignore folders with raw or processed data
+/data/
+
+# Ignore temporary files from Jupyter
+.ipynb_checkpoints/
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Optional: ignore image placeholders
+no_image.jpg
