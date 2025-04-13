@@ -1,28 +1,23 @@
 import cv2
 import numpy as np
 import os
+from tensorflow.keras.applications.resnet50 import preprocess_input
 
 def load_image(image_path):
-    """
-    Charge une image à partir du chemin spécifié
-    """
+    """Charge une image à partir du chemin spécifié"""
     return cv2.imread(image_path)
 
-def resize_image(image, target_size=(64, 64)):
-    """
-    Redimensionne l'image à la taille spécifiée
-    """
+def resize_image(image, target_size=(224, 224)):
+    """Redimensionne l'image à la taille spécifiée"""
     return cv2.resize(image, target_size)
 
-def normalize_image(image):
+def preprocess_image(image_path, target_size=(224, 224)):
     """
-    Normalise les valeurs des pixels entre 0 et 1
-    """
-    return image / 255.0
-
-def preprocess_image(image_path, target_size=(64, 64)):
-    """
-    Prétraite une image en la chargeant, la redimensionnant et la normalisant
+    Prétraite une image pour ResNet50:
+    1. Charge l'image
+    2. Convertit en RGB
+    3. Redimensionne
+    4. Applique le prétraitement spécifique à ResNet50
     """
     image = load_image(image_path)
     if image is None:
@@ -35,23 +30,12 @@ def preprocess_image(image_path, target_size=(64, 64)):
     # Redimensionnement
     image = resize_image(image, target_size)
     
-    # Normalisation
-    image = normalize_image(image)
+    # Prétraitement spécifique à ResNet50 (normalisation, etc.)
+    image = preprocess_input(image)
     
     return image
 
-def apply_clahe(image):
-    """
-    Applique CLAHE (Contrast Limited Adaptive Histogram Equalization) à l'image
-    """
-    lab = cv2.cvtColor(image, cv2.COLOR_RGB2LAB)
-    lab_planes = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    lab_planes[0] = clahe.apply(lab_planes[0])
-    lab = cv2.merge(lab_planes)
-    return cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
-
-def preprocess_for_detection(image, target_size=(64, 64)):
+def preprocess_for_detection(image, target_size=(224, 224)):
     """
     Prétraitement spécifique pour la détection en temps réel
     """
@@ -62,7 +46,7 @@ def preprocess_for_detection(image, target_size=(64, 64)):
     # Redimensionnement
     image = resize_image(image, target_size)
     
-    # Normalisation
-    image = normalize_image(image)
+    # Prétraitement spécifique à ResNet50
+    image = preprocess_input(image)
     
     return image
