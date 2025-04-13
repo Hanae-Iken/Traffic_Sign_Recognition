@@ -5,6 +5,7 @@ env/
 # Ignorer les fichiers du modèle (fichiers lourds, à ne pas pousser sur GitHub)
 models/
 *.h5
+*.pkl
 
 # Ignorer les fichiers de données et de cache
 data/

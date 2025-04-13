@@ -13,129 +13,109 @@ import random
 from sklearn.model_selection import train_test_split
 import pickle
 
-# Parameters
-path_train = "data/Train"  # Dossier contenant les images d'entraînement
-path_test = "data/Test"    # Dossier contenant les images de test
-path_meta = "data/Meta"    # Dossier contenant les images de validation
-labels_file = "data/classes.csv"  # Fichier CSV avec les noms des classes
-
-batch_size_val = 50
-steps_per_epoch_val = 2000
-epochs_val = 10
+# Paramètres
+path_train = "data/Train"  # Dossier avec sous-dossiers par classe
+path_test_csv = "data/Test.csv"  # Fichier CSV pour les tests
+path_meta_csv = "data/Meta.csv"  # Fichier CSV pour la validation
+labels_file = "data/classes.csv"  # Fichier des labels
 image_dimensions = (32, 32, 3)
-test_ratio = 0.2
-validation_ratio = 0.2
+batch_size_val = 50
+epochs_val = 10
 
-# Importation des images et des labels
-def load_data(path, labels):
-    images = []
-    class_ids = []
-    for class_id, class_name in labels.items():
-        class_path = os.path.join(path, str(class_id))
-        if os.path.exists(class_path):
-            for img_name in os.listdir(class_path):
-                img_path = os.path.join(class_path, img_name)
-                img = cv2.imread(img_path)
-                if img is not None:
-                    img = cv2.resize(img, (image_dimensions[0], image_dimensions[1]))
-                    images.append(img)
-                    class_ids.append(class_id)
-    return np.array(images), np.array(class_ids)
-
-# Charger les labels depuis le CSV
+# Chargement des labels
 labels_df = pd.read_csv(labels_file)
 labels_dict = dict(zip(labels_df['ClassId'], labels_df['Name']))
 
-# Charger les données d'entraînement, de test et de validation
-X_train, y_train = load_data(path_train, labels_dict)
-X_test, y_test = load_data(path_test, labels_dict)
-X_validation, y_validation = load_data(path_meta, labels_dict)
+# Fonction pour charger les images depuis un CSV
+def load_from_csv(csv_path, img_folder):
+    df = pd.read_csv(csv_path)
+    images = []
+    class_ids = []
+    for _, row in df.iterrows():
+        img_path = os.path.join(img_folder, row['Path'].split('/')[-1])
+        if os.path.exists(img_path):
+            img = cv2.imread(img_path)
+            img = cv2.resize(img, (image_dimensions[:2]))
+            images.append(img)
+            class_ids.append(row['ClassId'])
+    return np.array(images), np.array(class_ids)
 
-# Vérification des dimensions des données
-print("Train shape:", X_train.shape, y_train.shape)
-print("Test shape:", X_test.shape, y_test.shape)
-print("Validation shape:", X_validation.shape, y_validation.shape)
+# Chargement des données
+X_train, y_train = [], []
+for class_id in labels_dict.keys():
+    class_path = os.path.join(path_train, str(class_id))
+    if os.path.exists(class_path):
+        for img_name in os.listdir(class_path):
+            img_path = os.path.join(class_path, img_name)
+            img = cv2.imread(img_path)
+            if img is not None:
+                img = cv2.resize(img, (image_dimensions[:2]))
+                X_train.append(img)
+                y_train.append(class_id)
+X_train, y_train = np.array(X_train), np.array(y_train)
 
-# Prétraitement des images
+X_test, y_test = load_from_csv(path_test_csv, "data/Test")
+X_validation, y_validation = load_from_csv(path_meta_csv, "data/Meta")
+
+# Vérification des données
+print(f"Train: {X_train.shape}, {y_train.shape}")
+print(f"Test: {X_test.shape}, {y_test.shape}")
+print(f"Validation: {X_validation.shape}, {y_validation.shape}")
+
+# Prétraitement
 def preprocess(img):
     img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     img = cv2.equalizeHist(img)
-    img = img / 255.0
-    return img
+    return img / 255.0
 
-X_train = np.array([preprocess(img) for img in X_train])
-X_test = np.array([preprocess(img) for img in X_test])
-X_validation = np.array([preprocess(img) for img in X_validation])
+X_train = np.array([preprocess(img) for img in X_train]).reshape(-1, 32, 32, 1)
+X_test = np.array([preprocess(img) for img in X_test]).reshape(-1, 32, 32, 1)
+X_validation = np.array([preprocess(img) for img in X_validation]).reshape(-1, 32, 32, 1)
 
-# Redimensionnement pour CNN
-X_train = X_train.reshape(X_train.shape[0], X_train.shape[1], X_train.shape[2], 1)
-X_test = X_test.reshape(X_test.shape[0], X_test.shape[1], X_test.shape[2], 1)
-X_validation = X_validation.reshape(X_validation.shape[0], X_validation.shape[1], X_validation.shape[2], 1)
-
-# Augmentation des données
-data_gen = ImageDataGenerator(
-    width_shift_range=0.1,
-    height_shift_range=0.1,
-    zoom_range=0.2,
-    shear_range=0.1,
-    rotation_range=10
-)
-data_gen.fit(X_train)
-
-# Conversion des labels en catégoriels
+# Conversion des labels
 y_train = to_categorical(y_train, len(labels_dict))
 y_test = to_categorical(y_test, len(labels_dict))
 y_validation = to_categorical(y_validation, len(labels_dict))
 
-# Définition du modèle CNN
-def create_model():
-    model = Sequential()
-    model.add(Conv2D(60, (5, 5), input_shape=(image_dimensions[0], image_dimensions[1], 1), activation='relu'))
-    model.add(Conv2D(60, (5, 5), activation='relu'))
-    model.add(MaxPooling2D(pool_size=(2, 2)))
-    model.add(Conv2D(30, (3, 3), activation='relu'))
-    model.add(Conv2D(30, (3, 3), activation='relu'))
-    model.add(MaxPooling2D(pool_size=(2, 2)))
-    model.add(Dropout(0.5))
-    model.add(Flatten())
-    model.add(Dense(500, activation='relu'))
-    model.add(Dropout(0.5))
-    model.add(Dense(len(labels_dict), activation='softmax'))
-    model.compile(Adam(lr=0.001), loss='categorical_crossentropy', metrics=['accuracy'])
-    return model
+# Data Augmentation
+datagen = ImageDataGenerator(
+    width_shift_range=0.1,
+    height_shift_range=0.1,
+    zoom_range=0.2,
+    rotation_range=10
+)
+datagen.fit(X_train)
 
-# Entraînement du modèle
-model = create_model()
-print(model.summary())
+# Définition du modèle
+model = Sequential([
+    Conv2D(60, (5, 5), activation='relu', input_shape=(32, 32, 1)),
+    Conv2D(60, (5, 5), activation='relu'),
+    MaxPooling2D(pool_size=(2, 2)),
+    Conv2D(30, (3, 3), activation='relu'),
+    Conv2D(30, (3, 3), activation='relu'),
+    MaxPooling2D(pool_size=(2, 2)),
+    Dropout(0.5),
+    Flatten(),
+    Dense(500, activation='relu'),
+    Dropout(0.5),
+    Dense(len(labels_dict), activation='softmax')
+])
+model.compile(optimizer=Adam(learning_rate=0.001), loss='categorical_crossentropy', metrics=['accuracy'])
 
+# Entraînement
 history = model.fit(
-    data_gen.flow(X_train, y_train, batch_size=batch_size_val),
-    steps_per_epoch=steps_per_epoch_val,
+    datagen.flow(X_train, y_train, batch_size=batch_size_val),
     epochs=epochs_val,
-    validation_data=(X_validation, y_validation),
-    shuffle=True
+    validation_data=(X_validation, y_validation)
 )
 
-# Sauvegarde du modèle
+# Sauvegarde
 model.save("models/traffic_sign_model.h5")
-with open("models/traffic_sign_model.pkl", "wb") as f:
-    pickle.dump(model, f)
+with open("models/labels.pkl", "wb") as f:
+    pickle.dump(labels_dict, f)
 
-# Affichage des courbes d'apprentissage
-plt.figure(figsize=(12, 4))
-plt.subplot(1, 2, 1)
-plt.plot(history.history['loss'], label='Training Loss')
-plt.plot(history.history['val_loss'], label='Validation Loss')
-plt.legend()
-plt.title('Loss')
-
-plt.subplot(1, 2, 2)
+# Visualisation
 plt.plot(history.history['accuracy'], label='Training Accuracy')
 plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
 plt.legend()
-plt.title('Accuracy')
 plt.show()
-
-# Évaluation sur le jeu de test
-score = model.evaluate(X_test, y_test, verbose=0)
-print("Test Accuracy:", score[1])
